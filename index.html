@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Runner Control · Uzak Masaüstü Paneli</title>
+<style>
+:root{
+  --text:#2C2C2B; --text2:#7D7A75; --canvas:#FFFFFF; --soft:#F9F8F7; --soft2:#F0EFED;
+  --border:#E6E5E3; --blue:#2783DE; --blue-soft:#E5F2FC; --green:#46A171; --green-soft:#E8F1EC;
+  --orange:#D5803B; --orange-soft:#FBEBDE; --red:#E56458; --red-soft:#FCE9E7;
+  --shadow:0 1px 2px rgba(0,0,0,.05), 0 4px 12px rgba(0,0,0,.04);
+  --radius:10px; --r-sm:8px;
+  --font:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+  --mono:'Menlo','Consolas',monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --text:#FFFFFF; --text2:rgba(255,255,255,.65); --canvas:#191919; --soft:#202020; --soft2:#383836;
+    --border:rgba(255,255,255,.18); --blue:#5E9FE8; --blue-soft:rgba(94,159,232,.12);
+    --green:#72BC8F; --green-soft:rgba(114,188,143,.12); --orange:#DE9255; --orange-soft:rgba(222,146,85,.12);
+    --red:#E97366; --red-soft:rgba(233,115,102,.12);
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 4px 14px rgba(0,0,0,.25);
+  }
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:var(--canvas);color:var(--text);font-family:var(--font);font-size:16px;line-height:1.5;-webkit-font-smoothing:antialiased}
+button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
+input,select{font-family:inherit;font-size:14px}
+a{color:var(--blue);text-decoration:none}
+
+/* ---------- Header ---------- */
+.topbar{position:sticky;top:0;z-index:40;display:flex;align-items:center;gap:16px;padding:14px 32px;background:color-mix(in srgb,var(--canvas) 88%,transparent);backdrop-filter:blur(12px);border-bottom:1px solid var(--border)}
+.brand{display:flex;align-items:center;gap:10px;font-weight:650;font-size:16px}
+.brand .logo{width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,var(--blue),#1c6fc2);display:grid;place-items:center;color:#fff}
+.brand .logo svg{width:17px;height:17px}
+.brand small{display:block;font-weight:450;color:var(--text2);font-size:11.5px;line-height:1}
+.topbar .spacer{flex:1}
+.repo-chip{display:flex;align-items:center;gap:8px;padding:6px 12px;background:var(--soft);border:1px solid var(--border);border-radius:20px;font-size:13px;color:var(--text2)}
+.repo-chip svg{width:15px;height:15px}
+.repo-chip b{color:var(--text);font-weight:600}
+.dot{width:8px;height:8px;border-radius:50%;flex:none}
+.dot.ok{background:var(--green);box-shadow:0 0 0 3px var(--green-soft)}
+.icon-btn{width:38px;height:38px;border-radius:9px;display:grid;place-items:center;border:1px solid var(--border);background:var(--canvas);color:var(--text2)}
+.icon-btn:hover{background:var(--soft);color:var(--text)}
+.icon-btn svg{width:18px;height:18px}
+
+.wrap{max-width:1180px;margin:0 auto;padding:32px}
+
+/* ---------- Section head ---------- */
+.sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:16px}
+.sec-head h2{font-size:19px;font-weight:640;letter-spacing:-.01em}
+.sec-head p{color:var(--text2);font-size:13.5px}
+
+/* ---------- Stats ---------- */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:32px}
+.stat{background:var(--soft);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px}
+.stat .k{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--text2);font-weight:500}
+.stat .k .dot{width:7px;height:7px}
+.stat .v{font-size:27px;font-weight:680;letter-spacing:-.02em;margin-top:6px;line-height:1}
+.stat .v small{font-size:14px;color:var(--text2);font-weight:500}
+.cap-bar{height:5px;border-radius:3px;background:var(--soft2);margin-top:11px;overflow:hidden}
+.cap-bar i{display:block;height:100%;background:var(--blue);border-radius:3px}
+
+/* ---------- Launch card ---------- */
+.launch{background:var(--canvas);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow);padding:22px 24px;margin-bottom:34px}
+.launch .lh{display:flex;align-items:center;gap:10px;margin-bottom:20px}
+.launch .lh svg{width:19px;height:19px;color:var(--blue)}
+.launch .lh h3{font-size:16px;font-weight:640}
+.form-grid{display:grid;grid-template-columns:repeat(12,1fr);gap:16px 18px;align-items:end}
+.field{display:flex;flex-direction:column;gap:7px}
+.field label{font-size:12.5px;font-weight:600;color:var(--text2)}
+.field .hint{font-size:11px;color:var(--text2);font-weight:400}
+.field input,.field select{height:40px;padding:0 12px;border:1px solid var(--border);border-radius:var(--r-sm);background:var(--soft);color:var(--text);outline:none;transition:.15s}
+.field input:focus,.field select:focus{border-color:var(--blue);background:var(--canvas);box-shadow:0 0 0 3px var(--blue-soft)}
+.pwd{position:relative;display:flex}
+.pwd input{flex:1;padding-right:42px;font-family:var(--mono)}
+.pwd button{position:absolute;right:6px;top:6px;width:30px;height:28px;border-radius:6px;color:var(--text2)}
+.pwd button:hover{background:var(--soft2);color:var(--text)}
+.pwd button svg{width:15px;height:15px}
+
+/* segmented */
+.seg{display:flex;background:var(--soft2);border-radius:9px;padding:3px;gap:3px}
+.seg button{flex:1;height:34px;border-radius:6px;font-size:13px;font-weight:600;color:var(--text2);display:flex;align-items:center;justify-content:center;gap:6px;transition:.15s}
+.seg button svg{width:15px;height:15px}
+.seg button.active{background:var(--canvas);color:var(--text);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+
+.stepper{display:flex;align-items:center;border:1px solid var(--border);border-radius:var(--r-sm);background:var(--soft);height:40px;overflow:hidden}
+.stepper button{width:38px;height:100%;font-size:19px;color:var(--text2)}
+.stepper button:hover{background:var(--soft2);color:var(--text)}
+.stepper input{border:none;background:none;text-align:center;width:100%;height:100%;box-shadow:none!important}
+.stepper input:focus{background:none}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chips button{padding:4px 10px;border:1px solid var(--border);border-radius:16px;font-size:11.5px;color:var(--text2);background:var(--soft)}
+.chips button:hover{border-color:var(--blue);color:var(--blue)}
+
+.launch-actions{grid-column:1/-1;display:flex;align-items:center;gap:14px;margin-top:4px;padding-top:18px;border-top:1px solid var(--border)}
+.btn{height:42px;padding:0 20px;border-radius:9px;font-size:14px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:8px;transition:.15s}
+.btn svg{width:17px;height:17px}
+.btn-primary{background:var(--blue);color:#fff}
+.btn-primary:hover{filter:brightness(1.07)}
+.btn-ghost{background:var(--soft);border:1px solid var(--border);color:var(--text)}
+.btn-ghost:hover{background:var(--soft2)}
+.launch-actions .note{flex:1;color:var(--text2);font-size:12px;display:flex;align-items:center;gap:7px}
+.launch-actions .note svg{width:14px;height:14px;color:var(--orange);flex:none}
+
+/* ---------- Filter tabs ---------- */
+.tabs{display:flex;gap:4px;margin-bottom:18px;border-bottom:1px solid var(--border)}
+.tabs button{padding:9px 14px;font-size:13.5px;font-weight:600;color:var(--text2);border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs button .b{margin-left:6px;font-size:11px;background:var(--soft2);color:var(--text2);padding:1px 7px;border-radius:10px}
+.tabs button.active{color:var(--text);border-color:var(--blue)}
+.tabs button.active .b{background:var(--blue-soft);color:var(--blue)}
+
+/* ---------- Machine cards ---------- */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:16px}
+.card{background:var(--canvas);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;transition:.18s}
+.card:hover{border-color:color-mix(in srgb,var(--blue) 40%,var(--border))}
+.card .ch{display:flex;align-items:flex-start;gap:12px;padding:16px 16px 12px}
+.os-ic{width:38px;height:38px;border-radius:9px;display:grid;place-items:center;flex:none}
+.os-ic svg{width:20px;height:20px}
+.os-ic.win{background:var(--blue-soft);color:var(--blue)}
+.os-ic.linux{background:var(--orange-soft);color:var(--orange)}
+.ch .meta{flex:1;min-width:0}
+.ch .meta .name{font-weight:640;font-size:14.5px;display:flex;align-items:center;gap:8px}
+.ch .meta .sub{color:var(--text2);font-size:12px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.badge{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:14px;font-size:11px;font-weight:600;flex:none}
+.badge .dot{width:6px;height:6px}
+.badge.ready{background:var(--green-soft);color:var(--green)}
+.badge.booting{background:var(--orange-soft);color:var(--orange)}
+.badge.stopped{background:var(--soft2);color:var(--text2)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+.badge.booting .dot{animation:pulse 1.1s infinite}
+
+.card .cbody{padding:0 16px 14px}
+.rowline{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-top:1px solid var(--border);font-size:12.5px}
+.rowline .lbl{color:var(--text2);display:flex;align-items:center;gap:7px}
+.rowline .lbl svg{width:14px;height:14px;opacity:.8}
+.rowline .val{font-weight:550;font-family:var(--mono);font-size:12px}
+.tunnel{display:flex;align-items:center;gap:8px;background:var(--soft);border:1px solid var(--border);border-radius:7px;padding:7px 10px;margin-top:12px}
+.tunnel .u{flex:1;font-family:var(--mono);font-size:11.5px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tunnel button{width:26px;height:26px;border-radius:6px;display:grid;place-items:center;color:var(--text2);flex:none}
+.tunnel button:hover{background:var(--soft2);color:var(--text)}
+.tunnel button svg{width:14px;height:14px}
+
+.timebar{margin-top:12px}
+.timebar .tt{display:flex;justify-content:space-between;font-size:11px;color:var(--text2);margin-bottom:6px}
+.timebar .tt b{color:var(--text);font-weight:600;font-variant-numeric:tabular-nums}
+.prog{height:6px;border-radius:4px;background:var(--soft2);overflow:hidden}
+.prog i{display:block;height:100%;border-radius:4px;background:var(--green);transition:width 1s linear}
+.prog i.warn{background:var(--orange)}
+
+.card .cf{display:flex;gap:8px;padding:12px 16px;background:var(--soft);border-top:1px solid var(--border)}
+.cf .btn{height:36px;font-size:12.5px;padding:0 12px;flex:1}
+.cf .btn svg{width:14px;height:14px}
+.cf .btn-primary[disabled]{opacity:.5;cursor:not-allowed}
+.cf .mini{flex:none;width:36px;padding:0}
+
+/* ---------- Modal (VNC) ---------- */
+.overlay{position:fixed;inset:0;background:rgba(20,20,20,.55);backdrop-filter:blur(3px);z-index:80;display:none;align-items:center;justify-content:center;padding:24px}
+.overlay.on{display:flex}
+.modal{background:var(--canvas);border:1px solid var(--border);border-radius:14px;box-shadow:0 24px 60px rgba(0,0,0,.35);width:min(920px,100%);max-height:90vh;display:flex;flex-direction:column;overflow:hidden}
+.modal .mh{display:flex;align-items:center;gap:12px;padding:14px 18px;border-bottom:1px solid var(--border)}
+.modal .mh .os-ic{width:32px;height:32px}
+.modal .mh h3{font-size:15px;font-weight:640;flex:1}
+.modal .mh .badge{margin-right:4px}
+.screen{flex:1;background:#0e0e0f;min-height:380px;display:grid;place-items:center;position:relative;background-image:radial-gradient(circle at 50% 40%,#1a1a1d,#0e0e0f)}
+.screen .fake{text-align:center;color:rgba(255,255,255,.5)}
+.screen .fake svg{width:46px;height:46px;margin-bottom:12px;color:rgba(255,255,255,.4)}
+.screen .fake .t{font-size:14px;color:rgba(255,255,255,.75);font-weight:600}
+.screen .fake .s{font-size:12px;margin-top:5px;font-family:var(--mono)}
+.screen .live{position:absolute;top:12px;left:12px;display:flex;align-items:center;gap:6px;background:rgba(0,0,0,.5);padding:5px 10px;border-radius:14px;font-size:11px;color:#fff;font-weight:600}
+.screen .live .dot{background:var(--red);animation:pulse 1.3s infinite}
+.modal .mf{display:flex;align-items:center;gap:10px;padding:12px 18px;border-top:1px solid var(--border);background:var(--soft)}
+.modal .mf .info{flex:1;font-size:12px;color:var(--text2)}
+.modal .mf .info b{color:var(--text);font-family:var(--mono)}
+
+.toast-wrap{position:fixed;right:20px;bottom:20px;z-index:100;display:flex;flex-direction:column;gap:10px}
+.toast{display:flex;align-items:center;gap:10px;background:var(--canvas);border:1px solid var(--border);border-left:3px solid var(--green);border-radius:9px;padding:12px 16px;box-shadow:0 8px 24px rgba(0,0,0,.14);font-size:13px;font-weight:500;min-width:240px;animation:slidein .25s ease}
+.toast svg{width:17px;height:17px;color:var(--green);flex:none}
+@keyframes slidein{from{transform:translateX(20px);opacity:0}to{transform:none;opacity:1}}
+
+.footer-note{margin-top:34px;padding:16px 18px;background:var(--orange-soft);border:1px solid color-mix(in srgb,var(--orange) 30%,var(--border));border-radius:var(--radius);display:flex;gap:12px;font-size:12.5px;color:var(--text)}
+.footer-note svg{width:18px;height:18px;color:var(--orange);flex:none;margin-top:1px}
+.footer-note b{font-weight:640}
+
+@media (max-width:720px){
+  .topbar{padding:12px 18px}.wrap{padding:20px 18px}
+  .stats{grid-template-columns:repeat(2,1fr)}
+  .form-grid>.field,.launch .field{grid-column:1/-1!important}
+  .repo-chip .hide{display:none}
+  .launch-actions{flex-direction:column;align-items:stretch}
+  .launch-actions .note{order:3}
+  .grid{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg></span>
+    <span>Runner Control<small>Uzak masaüstü orkestrasyonu</small></span>
+  </div>
+  <div class="spacer"></div>
+  <div class="repo-chip"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.58 2 12.25c0 4.53 2.87 8.37 6.84 9.73.5.09.68-.22.68-.49v-1.7c-2.78.62-3.37-1.37-3.37-1.37-.45-1.18-1.11-1.5-1.11-1.5-.91-.63.07-.62.07-.62 1 .07 1.53 1.06 1.53 1.06.89 1.56 2.34 1.11 2.91.85.09-.66.35-1.11.63-1.37-2.22-.26-4.56-1.14-4.56-5.06 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.3.1-2.7 0 0 .84-.28 2.75 1.05a9.4 9.4 0 0 1 5 0c1.91-1.33 2.75-1.05 2.75-1.05.55 1.4.2 2.44.1 2.7.64.72 1.03 1.63 1.03 2.75 0 3.93-2.35 4.8-4.58 5.05.36.32.68.94.68 1.9v2.82c0 .27.18.59.69.49A10.02 10.02 0 0 0 22 12.25C22 6.58 17.52 2 12 2z"/></svg><span class="hide">cihandurmus/</span><b>vm-runners</b></div>
+  <div class="repo-chip"><span class="dot ok"></span>GitHub bağlı</div>
+  <button class="icon-btn" title="Yenile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.5 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.65 4.36A9 9 0 0 0 20.5 15"/></svg></button>
+</header>
+
+<main class="wrap">
+
+  <!-- STATS -->
+  <div class="stats">
+    <div class="stat"><div class="k"><span class="dot ok"></span>Aktif makine</div><div class="v" id="stActive">3</div></div>
+    <div class="stat"><div class="k"><span class="dot" style="background:var(--green)"></span>Hazır</div><div class="v" id="stReady">2</div></div>
+    <div class="stat"><div class="k"><span class="dot" style="background:var(--orange)"></span>Başlatılıyor</div><div class="v" id="stBoot">1</div></div>
+    <div class="stat"><div class="k"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>Kapasite</div><div class="v"><span id="capNum">3</span><small>/20</small></div><div class="cap-bar"><i id="capBar" style="width:15%"></i></div></div>
+  </div>
+
+  <!-- LAUNCH -->
+  <section class="launch">
+    <div class="lh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></svg><h3>Yeni Masaüstü Başlat</h3></div>
+    <div class="form-grid">
+
+      <div class="field" style="grid-column:span 4">
+        <label>İşletim Sistemi</label>
+        <div class="seg" id="segOS">
+          <button class="active" data-os="linux"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3a3 3 0 0 1 6 0c0 2 1 3 1 6s2 5 2 7-2 3-6 3-6-1-6-3 2-4 2-7 1-4 1-6z"/></svg>Linux · Kasm</button>
+          <button data-os="win"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 5.5 10.5 4.4v7.1H3zM3 12.5h7.5v7.1L3 18.5zM11.5 4.25 21 3v8.5h-9.5zM11.5 12.5H21V21l-9.5-1.25z"/></svg>Windows · VNC</button>
+        </div>
+      </div>
+
+      <div class="field" style="grid-column:span 5">
+        <label>İmaj / Container</label>
+        <select id="selImage">
+          <option value="kasmweb/desktop:1.18.0">kasmweb/desktop:1.18.0 (Ubuntu XFCE)</option>
+          <option value="kasmweb/chrome:1.18.0">kasmweb/chrome:1.18.0 (Chrome)</option>
+          <option value="kasmweb/firefox:1.18.0">kasmweb/firefox:1.18.0 (Firefox)</option>
+          <option value="windows-latest">windows-latest (TightVNC + noVNC)</option>
+        </select>
+      </div>
+
+      <div class="field" style="grid-column:span 3">
+        <label>Tünel Sağlayıcı</label>
+        <select id="selTunnel">
+          <option value="cloudflare">Cloudflare (Quick)</option>
+          <option value="cloudflare-named">Cloudflare (Named)</option>
+          <option value="tailscale">Tailscale Funnel</option>
+          <option value="ngrok">ngrok</option>
+          <option value="pinggy">Pinggy</option>
+        </select>
+      </div>
+
+      <div class="field" style="grid-column:span 4">
+        <label>Süre <span class="hint">(dakika · max 350)</span></label>
+        <div class="stepper"><button type="button" data-step="-5">−</button><input id="inpDur" type="number" value="60" min="1" max="350"><button type="button" data-step="5">+</button></div>
+        <div class="chips" id="durChips"><button data-d="1">1 dk</button><button data-d="15">15 dk</button><button data-d="60">1 saat</button><button data-d="720">12 saat</button></div>
+      </div>
+
+      <div class="field" style="grid-column:span 5">
+        <label>noVNC Şifresi</label>
+        <div class="pwd"><input id="inpPwd" type="text" value="kasm_password_123"><button type="button" id="genPwd" title="Yeni şifre üret"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.5 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.65 4.36A9 9 0 0 0 20.5 15"/></svg></button></div>
+      </div>
+
+      <div class="field" style="grid-column:span 3">
+        <label>Adet <span class="hint">(paralel)</span></label>
+        <div class="stepper"><button type="button" data-cstep="-1">−</button><input id="inpCount" type="number" value="1" min="1" max="20"><button type="button" data-cstep="1">+</button></div>
+      </div>
+
+      <div class="launch-actions">
+        <button class="btn btn-primary" id="btnLaunch"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>Başlat</button>
+        <button class="btn btn-ghost" id="btnDispatch"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v12H5.17L4 17.17z"/></svg>Workflow'u önizle</button>
+        <span class="note"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>Public repo paralel limiti: 20 job · Boot ~2-3 dk sürebilir</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- MACHINES -->
+  <div class="sec-head"><h2>Makineler</h2><p>Çalışan runner'ları izleyin, bağlanın ve yönetin</p></div>
+  <div class="tabs" id="tabs">
+    <button class="active" data-f="all">Tümü<span class="b" id="tAll">3</span></button>
+    <button data-f="ready">Hazır<span class="b" id="tReady">2</span></button>
+    <button data-f="booting">Başlatılıyor<span class="b" id="tBoot">1</span></button>
+    <button data-f="stopped">Durdurulan<span class="b" id="tStop">0</span></button>
+  </div>
+
+  <div class="grid" id="grid"></div>
+
+  <div class="footer-note">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+    <div><b>Not:</b> Bu panel Codespace içinde <b>private</b> çalışır (dışarı kapalı). Runner'lar GitHub Actions üzerinde gözlem amaçlı, kısa süreli açılır. Uzun süreli / interaktif kullanım GitHub'ın kullanım şartları açısından risklidir — repo yedeklerinizi başka yerde tutun.</div>
+  </div>
+</main>
+
+<!-- VNC MODAL -->
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <div class="mh">
+      <span class="os-ic linux" id="mOsIc"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg></span>
+      <h3 id="mTitle">desktop-a1b2</h3>
+      <span class="badge ready"><span class="dot"></span>Hazır</span>
+      <button class="icon-btn" id="mClose"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+    </div>
+    <div class="screen">
+      <div class="live"><span class="dot"></span>CANLI</div>
+      <div class="fake">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+        <div class="t">noVNC oturumu bu alanda gömülü açılır</div>
+        <div class="s" id="mUrl">https://calm-river-3821.trycloudflare.com</div>
+      </div>
+    </div>
+    <div class="mf">
+      <div class="info">Kullanıcı <b>kasm_user</b> · Şifre <b id="mPwd">kasm_password_123</b></div>
+      <button class="btn btn-ghost"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><path d="M12 15V3M8 7l4-4 4 4"/></svg>Dosyalar</button>
+      <button class="btn btn-ghost"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>Yeni sekmede aç</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-wrap" id="toasts"></div>
+
+<script>
+const OS_ICON={
+  linux:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3a3 3 0 0 1 6 0c0 2 1 3 1 6s2 5 2 7-2 3-6 3-6-1-6-3 2-4 2-7 1-4 1-6z"/></svg>',
+  win:'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 5.5 10.5 4.4v7.1H3zM3 12.5h7.5v7.1L3 18.5zM11.5 4.25 21 3v8.5h-9.5zM11.5 12.5H21V21l-9.5-1.25z"/></svg>'
+};
+const I={
+  clock:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+  img:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>',
+  tun:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12a10 10 0 0 1 20 0M12 12v9"/><circle cx="12" cy="12" r="2"/></svg>',
+  copy:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>',
+  play:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 4 20 12 6 20 6 4"/></svg>',
+  files:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h6l2 3h8a2 2 0 0 1 2 2z"/></svg>',
+  stop:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>',
+  ok:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>'
+};
+const PROV={cloudflare:'Cloudflare',['cloudflare-named']:'Cloudflare Named',tailscale:'Tailscale',ngrok:'ngrok',pinggy:'Pinggy'};
+let machines=[
+  {id:'desktop-a1b2',os:'linux',img:'kasmweb/desktop:1.18.0',tun:'cloudflare',url:'https://calm-river-3821.trycloudflare.com',pwd:'kasm_password_123',total:3600,left:2480,status:'ready'},
+  {id:'desktop-9f4c',os:'win',img:'windows-latest',tun:'cloudflare',url:'https://swift-forest-7712.trycloudflare.com',pwd:'win_dev_2026',total:43200,left:39120,status:'ready'},
+  {id:'desktop-c7e1',os:'linux',img:'kasmweb/chrome:1.18.0',tun:'tailscale',url:'',pwd:'kasm_password_123',total:900,left:900,status:'booting'}
+];
+let filter='all';
+function fmt(s){s=Math.max(0,s|0);const h=(s/3600|0),m=(s%3600/60|0),ss=s%60;return h>0?`${h}s ${String(m).padStart(2,'0')}dk`:`${m}:${String(ss).padStart(2,'0')}`;}
+function esc(x){return String(x).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+
+function render(){
+  const g=document.getElementById('grid');
+  const list=machines.filter(m=>filter==='all'?true:m.status===filter);
+  g.innerHTML=list.map(m=>{
+    const pct=m.total?Math.max(0,Math.min(100,m.left/m.total*100)):0;
+    const warn=pct<20?'warn':'';
+    const booting=m.status==='booting',stopped=m.status==='stopped';
+    const badge=booting?'<span class="badge booting"><span class="dot"></span>Başlatılıyor</span>':stopped?'<span class="badge stopped"><span class="dot"></span>Durduruldu</span>':'<span class="badge ready"><span class="dot"></span>Hazır</span>';
+    const tunnel=m.url?`<div class="tunnel"><span class="u">${esc(m.url)}</span><button title="Kopyala" onclick="copyUrl('${esc(m.url)}')">${I.copy}</button></div>`:`<div class="tunnel"><span class="u" style="color:var(--text2)">Tünel URL bekleniyor…</span></div>`;
+    return `<div class="card">
+      <div class="ch">
+        <span class="os-ic ${m.os}">${OS_ICON[m.os]}</span>
+        <div class="meta"><div class="name">${esc(m.id)}</div><div class="sub">${esc(m.img)}</div></div>
+        ${badge}
+      </div>
+      <div class="cbody">
+        <div class="rowline"><span class="lbl">${I.tun}Tünel</span><span class="val">${PROV[m.tun]}</span></div>
+        <div class="rowline"><span class="lbl">${I.clock}Süre</span><span class="val">${fmt(m.total)}</span></div>
+        ${tunnel}
+        <div class="timebar"><div class="tt"><span>${booting?'Hazırlanıyor':'Kalan süre'}</span><b class="cd">${booting?'—':fmt(m.left)}</b></div><div class="prog"><i class="${warn}" style="width:${booting?100:pct}%"></i></div></div>
+      </div>
+      <div class="cf">
+        <button class="btn btn-primary" ${booting||stopped?'disabled':''} onclick="openVnc('${m.id}')">${I.play}Bağlan</button>
+        <button class="btn btn-ghost" ${booting||stopped?'disabled':''} title="Dosyalar">${I.files}</button>
+        <button class="btn btn-ghost mini" ${stopped?'disabled':''} title="Durdur" onclick="stopM('${m.id}')">${I.stop}</button>
+      </div>
+    </div>`;
+  }).join('') || `<div style="color:var(--text2);padding:40px;text-align:center;grid-column:1/-1">Bu filtrede makine yok.</div>`;
+  // stats
+  const a=machines.filter(m=>m.status!=='stopped').length,r=machines.filter(m=>m.status==='ready').length,b=machines.filter(m=>m.status==='booting').length,s=machines.filter(m=>m.status==='stopped').length;
+  stActive.textContent=a;stReady.textContent=r;stBoot.textContent=b;capNum.textContent=a;capBar.style.width=(a/20*100)+'%';
+  tAll.textContent=machines.length;tReady.textContent=r;tBoot.textContent=b;tStop.textContent=s;
+}
+function toast(msg){const t=document.createElement('div');t.className='toast';t.innerHTML=I.ok+'<span>'+esc(msg)+'</span>';toasts.appendChild(t);setTimeout(()=>{t.style.opacity='0';t.style.transition='.3s';setTimeout(()=>t.remove(),300);},2600);}
+function copyUrl(u){navigator.clipboard&&navigator.clipboard.writeText(u);toast('URL kopyalandı');}
+function stopM(id){const m=machines.find(x=>x.id===id);if(m){m.status='stopped';m.left=0;render();toast(m.id+' durduruldu');}}
+function openVnc(id){const m=machines.find(x=>x.id===id);if(!m)return;mTitle.textContent=m.id;mUrl.textContent=m.url;mPwd.textContent=m.pwd;const ic=document.getElementById('mOsIc');ic.className='os-ic '+m.os;ic.innerHTML=OS_ICON[m.os];overlay.classList.add('on');}
+mClose.onclick=()=>overlay.classList.remove('on');
+overlay.onclick=e=>{if(e.target===overlay)overlay.classList.remove('on');};
+
+// OS segmented
+document.querySelectorAll('#segOS button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#segOS button').forEach(x=>x.classList.remove('active'));b.classList.add('active');const win=b.dataset.os==='win';selImage.value=win?'windows-latest':'kasmweb/desktop:1.18.0';});
+// duration
+document.querySelectorAll('.stepper [data-step]').forEach(b=>b.onclick=()=>{inpDur.value=Math.min(350,Math.max(1,(+inpDur.value||0)+ +b.dataset.step));});
+document.querySelectorAll('#durChips button').forEach(b=>b.onclick=()=>{inpDur.value=b.dataset.d;});
+document.querySelectorAll('.stepper [data-cstep]').forEach(b=>b.onclick=()=>{inpCount.value=Math.min(20,Math.max(1,(+inpCount.value||0)+ +b.dataset.cstep));});
+genPwd.onclick=()=>{inpPwd.value=Math.random().toString(36).slice(2,10)+Math.random().toString(36).slice(2,6);toast('Yeni şifre üretildi');};
+// tabs
+document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#tabs button').forEach(x=>x.classList.remove('active'));b.classList.add('active');filter=b.dataset.f;render();});
+// launch
+btnLaunch.onclick=()=>{
+  const os=document.querySelector('#segOS button.active').dataset.os;
+  const dur=Math.min(350,Math.max(1,+inpDur.value||60));const cnt=Math.min(20,Math.max(1,+inpCount.value||1));
+  for(let i=0;i<cnt;i++){const id='desktop-'+Math.random().toString(16).slice(2,6);machines.unshift({id,os,img:selImage.value,tun:selTunnel.value,url:'',pwd:inpPwd.value,total:dur*60,left:dur*60,status:'booting'});
+    setTimeout(()=>{const m=machines.find(x=>x.id===id);if(m&&m.status==='booting'){m.status='ready';m.url='https://'+['calm','swift','bold','warm','cool'][Math.random()*5|0]+'-'+['river','forest','peak','field','cloud'][Math.random()*5|0]+'-'+(1000+Math.random()*8999|0)+'.trycloudflare.com';render();toast(m.id+' hazır');}},2600+i*400);
+  }
+  render();toast(cnt>1?cnt+' makine başlatılıyor':'Makine başlatılıyor');
+};
+btnDispatch.onclick=()=>toast('workflow_dispatch gönderildi');
+// countdown tick
+setInterval(()=>{let dirty=false;machines.forEach(m=>{if(m.status==='ready'&&m.left>0){m.left--;dirty=true;if(m.left<=0){m.status='stopped';}}});if(dirty){document.querySelectorAll('.card').forEach((c,i)=>{});render();}},1000);
+render();
+</script>
+</body>
+</html>
