@@ -20,7 +20,9 @@ import os, uuid, time
 from typing import Optional
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
+import pathlib
 import httpx
 
 GH_TOKEN = os.environ["GH_TOKEN"]
@@ -30,6 +32,14 @@ GH_API = "https://api.github.com"
 
 app = FastAPI(title="Runner Control")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
+# index.html'i repo kokunden sun -> panel ve API ayni adreste (CORS derdi yok).
+INDEX = pathlib.Path(__file__).resolve().parent.parent / "index.html"
+
+
+@app.get("/")
+def panel():
+    return FileResponse(INDEX)
 
 # Basit in-memory state (20 makine icin fazlasiyla yeterli).
 RUNNERS: dict[str, dict] = {}
@@ -67,13 +77,17 @@ async def launch(req: LaunchReq):
                 "vnc_sifre": req.vnc_password,
                 "tunnel_provider": req.tunnel_provider,
             }
-            if req.os == "linux":
-                inputs["image"] = req.image
+            # desktop (xfce4) sabit olarak workflow'a gomuldu, input gonderilmiyor
+            dispatch_url = f"{GH_API}/repos/{OWNER}/{REPO}/actions/workflows/{wf}/dispatches"
             r = await c.post(
-                f"{GH_API}/repos/{OWNER}/{REPO}/actions/workflows/{wf}/dispatches",
+                dispatch_url,
                 headers=gh_headers(),
                 json={"ref": "main", "inputs": inputs},
             )
+            print(f"[DEBUG] POST {dispatch_url}")
+            print(f"[DEBUG] inputs={inputs}")
+            print(f"[DEBUG] status={r.status_code} body={r.text!r}")
+            print(f"[DEBUG] request-id={r.headers.get('x-github-request-id')}")
             if r.status_code >= 300:
                 raise HTTPException(502, f"github dispatch hatasi: {r.text}")
             RUNNERS[cid] = {
