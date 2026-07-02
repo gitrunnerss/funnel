@@ -1,4 +1,3 @@
-
 name: Kasm Desktop (Linux) + Tunnel
 
 # Panelden workflow_dispatch ile tetiklenir. correlation_id ile backend
@@ -29,7 +28,7 @@ on:
         default: 'cloudflare'
 
 # run adina correlation_id yaz -> panel listede eslestirir
-run-name: "kasm · $ inputs.correlation_id  · $ inputs.sure_dakika dk"
+run-name: "kasm · ${{ inputs.correlation_id }} · ${{ inputs.sure_dakika }}dk"
 
 jobs:
   desktop:
@@ -37,8 +36,8 @@ jobs:
     timeout-minutes: 355   # ust guvenlik siniri (self-timeout her zaman once biter)
     env:
       # Bu iki secret'i repo Settings > Secrets bolumunden ekleyin:
-      BACKEND_URL:    $ secrets.BACKEND_URL      # or. https://xxx.trycloudflare.com
-      WEBHOOK_SECRET: $ secrets.WEBHOOK_SECRET    # backend ile paylasilan gizli token
+      BACKEND_URL:    ${{ secrets.BACKEND_URL }}     # or. https://xxx.trycloudflare.com
+      WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}   # backend ile paylasilan gizli token
     steps:
       - name: Arac kurulumu (cloudflared + filebrowser)
         run: |
@@ -54,8 +53,8 @@ jobs:
           set -e
           docker run -d --name kasm --shm-size=512m \
             -p 6901:6901 \
-            -e VNC_PW='$ inputs.vnc_sifre ' \
-            '$ inputs.image '
+            -e VNC_PW='${{ inputs.vnc_sifre }}' \
+            '${{ inputs.image }}'
           echo "Container ayaga kalkiyor (25sn)..."
           sleep 25
           docker ps
@@ -66,7 +65,7 @@ jobs:
           mkdir -p shared
           # 6902 portunda, sifresiz degil: admin/vnc_sifre ile giris
           filebrowser -a 0.0.0.0 -p 6902 -r "$PWD/shared" \
-            --username admin --password '$ inputs.vnc_sifre ' \
+            --username admin --password '${{ inputs.vnc_sifre }}' \
             > filebrowser.log 2>&1 &
           echo $! > fb.pid
 
@@ -85,7 +84,7 @@ jobs:
             echo "$U"
           }
 
-          case "$ inputs.tunnel_provider " in
+          case "${{ inputs.tunnel_provider }}" in
             cloudflare|*)
               VNC_URL=$(start_cf https://localhost:6901 vnc.log)
               FILES_URL=$(start_cf http://localhost:6902 files.log)
@@ -106,8 +105,8 @@ jobs:
             echo "| VNC URL | $VNC_URL |"
             echo "| Dosyalar | $FILES_URL |"
             echo "| Kullanici | \`kasm_user\` |"
-            echo "| Sifre | \`$ inputs.vnc_sifre \` |"
-            echo "| Sure | $ inputs.sure_dakika  dakika |"
+            echo "| Sifre | \`${{ inputs.vnc_sifre }}\` |"
+            echo "| Sure | ${{ inputs.sure_dakika }} dakika |"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: URL'leri backend'e bildir (webhook)
@@ -116,12 +115,12 @@ jobs:
           curl -sS -X POST "$BACKEND_URL/webhook/tunnel" \
             -H "Content-Type: application/json" \
             -H "X-Webhook-Token: $WEBHOOK_SECRET" \
-            -d "{\"correlation_id\":\"$ inputs.correlation_id \",\"os\":\"linux\",\"status\":\"ready\",\"vnc_url\":\"$ steps.tunnel.outputs.vnc_url \",\"files_url\":\"$ steps.tunnel.outputs.files_url \",\"user\":\"kasm_user\"}" \
+            -d "{\"correlation_id\":\"${{ inputs.correlation_id }}\",\"os\":\"linux\",\"status\":\"ready\",\"vnc_url\":\"${{ steps.tunnel.outputs.vnc_url }}\",\"files_url\":\"${{ steps.tunnel.outputs.files_url }}\",\"user\":\"kasm_user\"}" \
             || echo "webhook gonderilemedi (backend kapali olabilir)"
 
       - name: Belirtilen sure boyunca aktif tut (self-timeout)
         run: |
-          DURATION=$(( $ inputs.sure_dakika  * 60 ))
+          DURATION=$(( ${{ inputs.sure_dakika }} * 60 ))
           echo "$DURATION saniye aktif kalinacak..."
           sleep $DURATION
 
@@ -129,7 +128,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: shared-$ inputs.correlation_id 
+          name: shared-${{ inputs.correlation_id }}
           path: shared/
           if-no-files-found: ignore
 
@@ -142,5 +141,5 @@ jobs:
           if [ -n "$BACKEND_URL" ]; then
             curl -sS -X POST "$BACKEND_URL/webhook/tunnel" \
               -H "Content-Type: application/json" -H "X-Webhook-Token: $WEBHOOK_SECRET" \
-              -d "{\"correlation_id\":\"$ inputs.correlation_id \",\"status\":\"stopped\"}" || true
+              -d "{\"correlation_id\":\"${{ inputs.correlation_id }}\",\"status\":\"stopped\"}" || true
           fi

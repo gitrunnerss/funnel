@@ -1,4 +1,3 @@
-
 name: Windows Desktop (VNC) + Tunnel
 
 # Windows runner: TightVNC + noVNC (websockify) ile tarayicidan erisim.
@@ -24,20 +23,20 @@ on:
         required: true
         default: 'cloudflare'
 
-run-name: "windows · $ inputs.correlation_id  · $ inputs.sure_dakika dk"
+run-name: "windows · ${{ inputs.correlation_id }} · ${{ inputs.sure_dakika }}dk"
 
 jobs:
   desktop:
     runs-on: windows-latest
     timeout-minutes: 355
     env:
-      BACKEND_URL:    $ secrets.BACKEND_URL 
-      WEBHOOK_SECRET: $ secrets.WEBHOOK_SECRET 
+      BACKEND_URL:    ${{ secrets.BACKEND_URL }}
+      WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
     steps:
       - name: Araclari kur (TightVNC + noVNC + websockify + cloudflared)
         shell: pwsh
         run: |
-          choco install tightvnc -y --installArguments 'ADDLOCAL=Server SET_USEVNCAUTHENTICATION=1 VALUE_OF_USEVNCAUTHENTICATION=1 SET_PASSWORD=1 VALUE_OF_PASSWORD=$ inputs.vnc_sifre  SET_ACCEPTHTTPCONNECTIONS=1 VALUE_OF_ACCEPTHTTPCONNECTIONS=0' | Out-Null
+          choco install tightvnc -y --installArguments 'ADDLOCAL=Server SET_USEVNCAUTHENTICATION=1 VALUE_OF_USEVNCAUTHENTICATION=1 SET_PASSWORD=1 VALUE_OF_PASSWORD=${{ inputs.vnc_sifre }} SET_ACCEPTHTTPCONNECTIONS=1 VALUE_OF_ACCEPTHTTPCONNECTIONS=0' | Out-Null
           pip install --quiet websockify
           # noVNC statik dosyalari
           git clone --depth 1 https://github.com/novnc/noVNC.git C:\noVNC
@@ -53,7 +52,7 @@ jobs:
           # TightVNC server servis olarak calisir; websockify 5900 -> 6080 (noVNC)
           Start-Process -FilePath "python" -ArgumentList "-m websockify --web C:\noVNC 6080 localhost:5900" -WindowStyle Hidden
           New-Item -ItemType Directory -Force -Path C:\shared | Out-Null
-          Start-Process -FilePath "C:\fb\filebrowser.exe" -ArgumentList "-a 0.0.0.0 -p 6902 -r C:\shared --username admin --password $ inputs.vnc_sifre " -WindowStyle Hidden
+          Start-Process -FilePath "C:\fb\filebrowser.exe" -ArgumentList "-a 0.0.0.0 -p 6902 -r C:\shared --username admin --password ${{ inputs.vnc_sifre }}" -WindowStyle Hidden
           Start-Sleep -Seconds 8
 
       - name: Cloudflare tunel baslat ve URL yakala
@@ -72,19 +71,19 @@ jobs:
           if (-not $vnc) { Write-Error 'Tunnel URL alinamadi'; Get-Content C:\vnc.err; exit 1 }
           "vnc_url=$vnc/vnc.html"  | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           "files_url=$files"       | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          @("## 🪩 Windows Desktop Hazir","","| Alan | Deger |","|---|---|","| VNC URL | $vnc/vnc.html |","| Dosyalar | $files |","| Sifre | ``$ inputs.vnc_sifre `` |","| Sure | $ inputs.sure_dakika  dakika |") | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          @("## 🪩 Windows Desktop Hazir","","| Alan | Deger |","|---|---|","| VNC URL | $vnc/vnc.html |","| Dosyalar | $files |","| Sifre | ``${{ inputs.vnc_sifre }}`` |","| Sure | ${{ inputs.sure_dakika }} dakika |") | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
 
       - name: URL'leri backend'e bildir (webhook)
         if: env.BACKEND_URL != ''
         shell: pwsh
         run: |
-          $body = @{ correlation_id='$ inputs.correlation_id '; os='win'; status='ready'; vnc_url='$ steps.tunnel.outputs.vnc_url '; files_url='$ steps.tunnel.outputs.files_url '; user='(TightVNC)' } | ConvertTo-Json
+          $body = @{ correlation_id='${{ inputs.correlation_id }}'; os='win'; status='ready'; vnc_url='${{ steps.tunnel.outputs.vnc_url }}'; files_url='${{ steps.tunnel.outputs.files_url }}'; user='(TightVNC)' } | ConvertTo-Json
           try { Invoke-RestMethod -Uri "$env:BACKEND_URL/webhook/tunnel" -Method Post -Body $body -ContentType 'application/json' -Headers @{ 'X-Webhook-Token' = $env:WEBHOOK_SECRET } } catch { Write-Host 'webhook gonderilemedi' }
 
       - name: Belirtilen sure boyunca aktif tut (self-timeout)
         shell: pwsh
         run: |
-          $sec = [int]'$ inputs.sure_dakika ' * 60
+          $sec = [int]'${{ inputs.sure_dakika }}' * 60
           Write-Host "$sec saniye aktif kalinacak..."
           Start-Sleep -Seconds $sec
 
@@ -92,104 +91,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: shared-$ inputs.correlation_id 
-          path: C:\shared\
-          if-no-files-found: ignore
-Cdu@Mac-mini-von-zedv workflows % 
-Cdu@Mac-mini-von-zedv workflows % cat windows-vnc.yml
-name: Windows Desktop (VNC) + Tunnel
-
-# Windows runner: TightVNC + noVNC (websockify) ile tarayicidan erisim.
-# Bazi programlar sadece Windows'ta calistigi icin bu varyant gozlem amacli.
-
-on:
-  workflow_dispatch:
-    inputs:
-      correlation_id:
-        description: 'Panelin urettigi benzersiz id'
-        required: true
-        default: 'manual'
-      sure_dakika:
-        description: 'Kac dakika ayakta kalsin (max 350)'
-        required: true
-        default: '30'
-      vnc_sifre:
-        description: 'VNC sifresi (max 8 karakter - TightVNC siniri)'
-        required: true
-        default: 'winpass1'
-      tunnel_provider:
-        description: 'cloudflare | ngrok | pinggy'
-        required: true
-        default: 'cloudflare'
-
-run-name: "windows · $ inputs.correlation_id  · $ inputs.sure_dakika dk"
-
-jobs:
-  desktop:
-    runs-on: windows-latest
-    timeout-minutes: 355
-    env:
-      BACKEND_URL:    $ secrets.BACKEND_URL 
-      WEBHOOK_SECRET: $ secrets.WEBHOOK_SECRET 
-    steps:
-      - name: Araclari kur (TightVNC + noVNC + websockify + cloudflared)
-        shell: pwsh
-        run: |
-          choco install tightvnc -y --installArguments 'ADDLOCAL=Server SET_USEVNCAUTHENTICATION=1 VALUE_OF_USEVNCAUTHENTICATION=1 SET_PASSWORD=1 VALUE_OF_PASSWORD=$ inputs.vnc_sifre  SET_ACCEPTHTTPCONNECTIONS=1 VALUE_OF_ACCEPTHTTPCONNECTIONS=0' | Out-Null
-          pip install --quiet websockify
-          # noVNC statik dosyalari
-          git clone --depth 1 https://github.com/novnc/noVNC.git C:\noVNC
-          # cloudflared
-          Invoke-WebRequest -Uri https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe -OutFile C:\cloudflared.exe
-          # filebrowser (dosya yukle/indir)
-          Invoke-WebRequest -Uri https://github.com/filebrowser/filebrowser/releases/latest/download/windows-amd64-filebrowser.zip -OutFile C:\fb.zip
-          Expand-Archive C:\fb.zip -DestinationPath C:\fb -Force
-
-      - name: VNC + noVNC baslat
-        shell: pwsh
-        run: |
-          # TightVNC server servis olarak calisir; websockify 5900 -> 6080 (noVNC)
-          Start-Process -FilePath "python" -ArgumentList "-m websockify --web C:\noVNC 6080 localhost:5900" -WindowStyle Hidden
-          New-Item -ItemType Directory -Force -Path C:\shared | Out-Null
-          Start-Process -FilePath "C:\fb\filebrowser.exe" -ArgumentList "-a 0.0.0.0 -p 6902 -r C:\shared --username admin --password $ inputs.vnc_sifre " -WindowStyle Hidden
-          Start-Sleep -Seconds 8
-
-      - name: Cloudflare tunel baslat ve URL yakala
-        id: tunnel
-        shell: pwsh
-        run: |
-          Start-Process -FilePath "C:\cloudflared.exe" -ArgumentList "tunnel --url http://localhost:6080" -RedirectStandardOutput C:\vnc.log -RedirectStandardError C:\vnc.err -WindowStyle Hidden
-          Start-Process -FilePath "C:\cloudflared.exe" -ArgumentList "tunnel --url http://localhost:6902" -RedirectStandardOutput C:\files.log -RedirectStandardError C:\files.err -WindowStyle Hidden
-          $vnc=$null; $files=$null
-          for ($i=0; $i -lt 40; $i++) {
-            if (-not $vnc)   { $vnc   = (Select-String -Path C:\vnc.err,C:\vnc.log     -Pattern 'https://[a-z0-9-]+\.trycloudflare\.com' -ErrorAction SilentlyContinue | Select-Object -First 1).Matches.Value }
-            if (-not $files) { $files = (Select-String -Path C:\files.err,C:\files.log -Pattern 'https://[a-z0-9-]+\.trycloudflare\.com' -ErrorAction SilentlyContinue | Select-Object -First 1).Matches.Value }
-            if ($vnc -and $files) { break }
-            Start-Sleep -Seconds 1
-          }
-          if (-not $vnc) { Write-Error 'Tunnel URL alinamadi'; Get-Content C:\vnc.err; exit 1 }
-          "vnc_url=$vnc/vnc.html"  | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          "files_url=$files"       | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          @("## 🪩 Windows Desktop Hazir","","| Alan | Deger |","|---|---|","| VNC URL | $vnc/vnc.html |","| Dosyalar | $files |","| Sifre | ``$ inputs.vnc_sifre `` |","| Sure | $ inputs.sure_dakika  dakika |") | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
-
-      - name: URL'leri backend'e bildir (webhook)
-        if: env.BACKEND_URL != ''
-        shell: pwsh
-        run: |
-          $body = @{ correlation_id='$ inputs.correlation_id '; os='win'; status='ready'; vnc_url='$ steps.tunnel.outputs.vnc_url '; files_url='$ steps.tunnel.outputs.files_url '; user='(TightVNC)' } | ConvertTo-Json
-          try { Invoke-RestMethod -Uri "$env:BACKEND_URL/webhook/tunnel" -Method Post -Body $body -ContentType 'application/json' -Headers @{ 'X-Webhook-Token' = $env:WEBHOOK_SECRET } } catch { Write-Host 'webhook gonderilemedi' }
-
-      - name: Belirtilen sure boyunca aktif tut (self-timeout)
-        shell: pwsh
-        run: |
-          $sec = [int]'$ inputs.sure_dakika ' * 60
-          Write-Host "$sec saniye aktif kalinacak..."
-          Start-Sleep -Seconds $sec
-
-      - name: Cikti dosyalarini artifact olarak yukle
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: shared-$ inputs.correlation_id 
+          name: shared-${{ inputs.correlation_id }}
           path: C:\shared\
           if-no-files-found: ignore
