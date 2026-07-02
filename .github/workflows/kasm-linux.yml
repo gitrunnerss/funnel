@@ -1,1 +1,146 @@
 
+name: Kasm Desktop (Linux) + Tunnel
+
+# Panelden workflow_dispatch ile tetiklenir. correlation_id ile backend
+# bu run'i eslestirebilir; tunel URL'i webhook ile backend'e gonderilir.
+
+on:
+  workflow_dispatch:
+    inputs:
+      correlation_id:
+        description: 'Panelin urettigi benzersiz id (run eslestirme)'
+        required: true
+        default: 'manual'
+      sure_dakika:
+        description: 'Kac dakika ayakta kalsin (max 350)'
+        required: true
+        default: '60'
+      vnc_sifre:
+        description: 'noVNC giris sifresi'
+        required: true
+        default: 'kasm_password_123'
+      image:
+        description: 'Kasm imaji'
+        required: true
+        default: 'kasmweb/desktop:1.18.0'
+      tunnel_provider:
+        description: 'cloudflare | tailscale | ngrok | pinggy'
+        required: true
+        default: 'cloudflare'
+
+# run adina correlation_id yaz -> panel listede eslestirir
+run-name: "kasm · $ inputs.correlation_id  · $ inputs.sure_dakika dk"
+
+jobs:
+  desktop:
+    runs-on: ubuntu-latest
+    timeout-minutes: 355   # ust guvenlik siniri (self-timeout her zaman once biter)
+    env:
+      # Bu iki secret'i repo Settings > Secrets bolumunden ekleyin:
+      BACKEND_URL:    $ secrets.BACKEND_URL      # or. https://xxx.trycloudflare.com
+      WEBHOOK_SECRET: $ secrets.WEBHOOK_SECRET    # backend ile paylasilan gizli token
+    steps:
+      - name: Arac kurulumu (cloudflared + filebrowser)
+        run: |
+          set -e
+          curl -sL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o cloudflared
+          chmod +x cloudflared && sudo mv cloudflared /usr/local/bin/
+          cloudflared --version
+          # filebrowser -> web'den dosya yukle/indir (6902 portu)
+          curl -fsSL https://raw.githubusercontent.com/filebrowser/get/master/get.sh | bash
+
+      - name: Kasm Desktop container'i baslat
+        run: |
+          set -e
+          docker run -d --name kasm --shm-size=512m \
+            -p 6901:6901 \
+            -e VNC_PW='$ inputs.vnc_sifre ' \
+            '$ inputs.image '
+          echo "Container ayaga kalkiyor (25sn)..."
+          sleep 25
+          docker ps
+          docker logs --tail 10 kasm || true
+
+      - name: Dosya yoneticisi (filebrowser) baslat
+        run: |
+          mkdir -p shared
+          # 6902 portunda, sifresiz degil: admin/vnc_sifre ile giris
+          filebrowser -a 0.0.0.0 -p 6902 -r "$PWD/shared" \
+            --username admin --password '$ inputs.vnc_sifre ' \
+            > filebrowser.log 2>&1 &
+          echo $! > fb.pid
+
+      - name: Tunelleri baslat ve URL yakala
+        id: tunnel
+        run: |
+          set -e
+          start_cf () {  # $1 = local url, $2 = log dosyasi
+            cloudflared tunnel --no-tls-verify --url "$1" > "$2" 2>&1 &
+            echo $! >> tunnels.pid
+            local U=""
+            for i in $(seq 1 30); do
+              U=$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$2" | head -1)
+              [ -n "$U" ] && break; sleep 1
+            done
+            echo "$U"
+          }
+
+          case "$ inputs.tunnel_provider " in
+            cloudflare|*)
+              VNC_URL=$(start_cf https://localhost:6901 vnc.log)
+              FILES_URL=$(start_cf http://localhost:6902 files.log)
+              ;;
+          esac
+
+          if [ -z "$VNC_URL" ]; then
+            echo "::error::Tunnel URL alinamadi"; cat vnc.log; exit 1
+          fi
+          echo "vnc_url=$VNC_URL"   >> "$GITHUB_OUTPUT"
+          echo "files_url=$FILES_URL" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "## 🖥️ Kasm Desktop Hazir"
+            echo ""
+            echo "| Alan | Deger |"
+            echo "|---|---|"
+            echo "| VNC URL | $VNC_URL |"
+            echo "| Dosyalar | $FILES_URL |"
+            echo "| Kullanici | \`kasm_user\` |"
+            echo "| Sifre | \`$ inputs.vnc_sifre \` |"
+            echo "| Sure | $ inputs.sure_dakika  dakika |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: URL'leri backend'e bildir (webhook)
+        if: env.BACKEND_URL != ''
+        run: |
+          curl -sS -X POST "$BACKEND_URL/webhook/tunnel" \
+            -H "Content-Type: application/json" \
+            -H "X-Webhook-Token: $WEBHOOK_SECRET" \
+            -d "{\"correlation_id\":\"$ inputs.correlation_id \",\"os\":\"linux\",\"status\":\"ready\",\"vnc_url\":\"$ steps.tunnel.outputs.vnc_url \",\"files_url\":\"$ steps.tunnel.outputs.files_url \",\"user\":\"kasm_user\"}" \
+            || echo "webhook gonderilemedi (backend kapali olabilir)"
+
+      - name: Belirtilen sure boyunca aktif tut (self-timeout)
+        run: |
+          DURATION=$(( $ inputs.sure_dakika  * 60 ))
+          echo "$DURATION saniye aktif kalinacak..."
+          sleep $DURATION
+
+      - name: Cikti dosyalarini artifact olarak yukle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: shared-$ inputs.correlation_id 
+          path: shared/
+          if-no-files-found: ignore
+
+      - name: Temizlik
+        if: always()
+        run: |
+          docker stop kasm 2>/dev/null || true
+          [ -f fb.pid ] && kill $(cat fb.pid) 2>/dev/null || true
+          [ -f tunnels.pid ] && xargs -r kill < tunnels.pid 2>/dev/null || true
+          if [ -n "$BACKEND_URL" ]; then
+            curl -sS -X POST "$BACKEND_URL/webhook/tunnel" \
+              -H "Content-Type: application/json" -H "X-Webhook-Token: $WEBHOOK_SECRET" \
+              -d "{\"correlation_id\":\"$ inputs.correlation_id \",\"status\":\"stopped\"}" || true
+          fi
