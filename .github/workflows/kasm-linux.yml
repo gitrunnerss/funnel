@@ -4,37 +4,36 @@ on:
   workflow_dispatch:
     inputs:
       correlation_id:
-        description: 'Panelin urettigi benzersiz id (run eslestirme)'
+        description: 'Panel ID'
         required: true
         default: 'manual'
       sure_dakika:
-        description: 'Kac dakika ayakta kalsin (max 350)'
+        description: 'Dakika (max 350)'
         required: true
         default: '60'
       vnc_sifre:
-        description: 'KasmVNC giris sifresi'
+        description: 'VNC sifresi'
         required: true
         default: 'kasm_password_123'
-      desktop:
-        description: 'xfce4 veya gnome (xfce4 onerilir, hafif)'
-        required: true
-        default: 'xfce4'
       tunnel_provider:
-        description: 'cloudflare | tailscale | ngrok | pinggy'
+        description: 'cloudflare | tailscale | ngrok'
         required: true
         default: 'cloudflare'
 
-run-name: "linux-desktop · ${{ inputs.correlation_id }} · ${{ inputs.sure_dakika }}dk"
+run-name: "linux-xfce · ${{ inputs.correlation_id }} · ${{ inputs.sure_dakika }} dk"
 
 jobs:
   desktop:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 355
     env:
       BACKEND_URL: ${{ secrets.BACKEND_URL }}
       WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
+      VNC_SIFRE: ${{ inputs.vnc_sifre }}
+      SURE_DK: ${{ inputs.sure_dakika }}
+      CID: ${{ inputs.correlation_id }}
     steps:
-      - name: Sistem hazirligi (XFCE + Xorg + dbus)
+      - name: 1-XFCE4+Xorg+dbus
         run: |
           set -e
           sudo apt-get update -qq
@@ -42,128 +41,114 @@ jobs:
             xorg xfce4 xfce4-terminal xfce4-power-manager \
             dbus-x11 policykit-1 sudo wget curl ca-certificates \
             xterm dbus fonts-dejavu
-          echo "XFCE + Xorg kuruldu."
+          echo "XFCE OK"
+          which startxfce4 || echo "WARN: startxfce4 yok"
 
-      - name: KasmVNC kurulumu (v1.4.0 Ubuntu Jammy)
+      - name: 2-KasmVNC-kur
         run: |
           set -e
-          KASMVNC_DEB="https://github.com/kasmtech/KasmVNC/releases/download/v1.4.0/kasmvncserver_jammy_1.4.0_amd64.deb"
-          wget -q "$KASMVNC_DEB" -O /tmp/kasmvnc.deb
+          wget -q "https://github.com/kasmtech/KasmVNC/releases/download/v1.4.0/kasmvncserver_jammy_1.4.0_amd64.deb" -O /tmp/kasmvnc.deb
           sudo apt-get install -y /tmp/kasmvnc.deb
           sudo adduser $USER ssl-cert
-          echo "KasmVNC kuruldu."
+          which vncserver && echo "vncserver OK" || echo "vncserver YOK"
+          which vncpasswd && echo "vncpasswd OK" || echo "vncpasswd YOK"
 
-      - name: KasmVNC ayarlari (sifre + port + http + basicAuth kapali)
+      - name: 3-KasmVNC-ayar
         run: |
           mkdir -p ~/.vnc
-          # Sifreyi ayarla
-          echo "${{ inputs.vnc_sifre }}" | vncpasswd -f > ~/.vnc/passwd
+          echo "$VNC_SIFRE" | vncpasswd -f > ~/.vnc/passwd 2>/dev/null || true
+          if [ ! -s ~/.vnc/passwd ]; then
+            printf '%s\n%s\nn\n' "$VNC_SIFRE" "$VNC_SIFRE" | vncpasswd > ~/.vnc/passwd 2>/dev/null || true
+          fi
           chmod 600 ~/.vnc/passwd
-          # kasmvnc.yaml: websocket port 8444, http, basicAuth kapali
+          ls -la ~/.vnc/passwd
           cat > ~/.vnc/kasmvnc.yaml << 'YAML'
-          network:
-            protocol: http
-            websocket_port: 8444
-            interface: 0.0.0.0
-          security:
-            basic_auth: false
-          X509:
-            enabled: false
-          YAML
-          # xstartup script (XFCE)
+network:
+  protocol: http
+  websocket_port: 8444
+  interface: 0.0.0.0
+security:
+  basic_auth: false
+X509:
+  enabled: false
+YAML
           cat > ~/.vnc/xstartup << 'XST'
-          #!/bin/bash
-          unset SESSION_MANAGER
-          unset DBUS_SESSION_BUS_ADDRESS
-          export XDG_SESSION_DESKTOP=xfce
-          export XDG_DATA_DIRS=/usr/share/xfce4:/usr/share/xubuntu:/usr/share:/usr/local/share
-          exec startxfce4
-          XST
+#!/bin/bash
+unset SESSION_MANAGER
+unset DBUS_SESSION_BUS_ADDRESS
+export XDG_SESSION_DESKTOP=xfce
+export XDG_DATA_DIRS=/usr/share/xfce4:/usr/share/xubuntu:/usr/share:/usr/local/share
+export DISPLAY=:1
+exec startxfce4
+XST
           chmod +x ~/.vnc/xstartup
+          echo "ayarlar hazir"
 
-      - name: KasmVNC server'i baslat
+      - name: 4-KasmVNC-baslat
         run: |
-          set -e
-          vncserver :1 -geometry 1280x720 -depth 24 -websocketPort 8444 \
-            -disableBasicAuth -httpInterface 0.0.0.0 \
+          vncserver :1 -geometry 1280x720 -depth 24 \
+            -websocketPort 8444 -disableBasicAuth \
             2>&1 | tee /tmp/vnc.log &
-          sleep 5
-          cat /tmp/vnc.log
-          # Port erisilebilir mi kontrol
-          curl -sS http://localhost:8444/ -o /dev/null -w "KasmVNC HTTP: %{http_code}\n" || echo "port hazir degil ama devam"
+          sleep 10
+          cat /tmp/vnc.log || true
+          curl -sS http://localhost:8444/ -o /dev/null -w "HTTP %{http_code}\n" || echo "port bekleniyor"
+          ps aux | grep vnc | grep -v grep || echo "vnc proses yok"
 
-      - name: Dosya yoneticisi (filebrowser) baslat
+      - name: 5-filebrowser
         run: |
           mkdir -p shared
           curl -fsSL https://raw.githubusercontent.com/filebrowser/get/master/get.sh | bash
           filebrowser -a 0.0.0.0 -p 6902 -r "$PWD/shared" \
-            --username admin --password '${{ inputs.vnc_sifre }}' \
+            --username admin --password "$VNC_SIFRE" \
             > filebrowser.log 2>&1 &
           echo $! > fb.pid
-          echo "filebrowser 6902'de calisiyor"
 
-      - name: Cloudflare tunnel kur ve baslat
+      - name: 6-cloudflare-tunnel
         id: tunnel
         run: |
           set -e
           curl -sL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o cloudflared
           chmod +x cloudflared && sudo mv cloudflared /usr/local/bin/
-
+          cloudflared --version
           start_cf () {
             cloudflared tunnel --no-tls-verify --url "$1" > "$2" 2>&1 &
             echo $! >> tunnels.pid
             local U=""
-            for i in $(seq 1 30); do
+            for i in $(seq 1 40); do
               U=$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$2" | head -1)
-              [ -n "$U" ] && break;
-              sleep 1
+              [ -n "$U" ] && break; sleep 1
             done
             echo "$U"
           }
-
-          case "${{ inputs.tunnel_provider }}" in
-            cloudflare|*)
-              VNC_URL=$(start_cf http://localhost:8444 vnc.log)
-              FILES_URL=$(start_cf http://localhost:6902 files.log)
-              ;;
-          esac
-
+          VNC_URL=$(start_cf http://localhost:8444 vnc_tunnel.log)
+          FILES_URL=$(start_cf http://localhost:6902 files_tunnel.log)
           if [ -z "$VNC_URL" ]; then
-            echo "::error::Tunnel URL alinamadi"; cat vnc.log; exit 1
+            echo "::error::Tunnel URL yok"; cat vnc_tunnel.log; exit 1
           fi
           echo "vnc_url=$VNC_URL" >> "$GITHUB_OUTPUT"
           echo "files_url=$FILES_URL" >> "$GITHUB_OUTPUT"
-
           {
-            echo "## 🖥️ Linux XFCE Desktop Hazir"
-            echo ""
-            echo "| Alan | Deger |"
-            echo "|---|---|"
-            echo "| VNC URL | $VNC_URL |"
+            echo "## Linux XFCE Desktop Hazir"
+            echo "| VNC | $VNC_URL |"
             echo "| Dosyalar | $FILES_URL |"
-            echo "| Kullanici | runner |"
-            echo "| Sifre | \`${{ inputs.vnc_sifre }}\` |"
-            echo "| Desktop | XFCE4 |"
-            echo "| KasmVNC | v1.4.0 |"
-            echo "| Sure | ${{ inputs.sure_dakika }} dakika |"
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: URL'leri backend'e bildir (webhook)
+      - name: 7-webhook
         if: env.BACKEND_URL != ''
         run: |
           curl -sS -X POST "$BACKEND_URL/webhook/tunnel" \
             -H "Content-Type: application/json" \
             -H "X-Webhook-Token: $WEBHOOK_SECRET" \
-            -d "{\"correlation_id\":\"${{ inputs.correlation_id }}\",\"os\":\"linux\",\"status\":\"ready\",\"vnc_url\":\"${{ steps.tunnel.outputs.vnc_url }}\",\"files_url\":\"${{ steps.tunnel.outputs.files_url }}\",\"user\":\"runner\"}" \
-            || echo "webhook gonderilemedi (backend kapali olabilir)"
+            -d '{"correlation_id":"'$CID'","os":"linux","status":"ready","vnc_url":"'${{ steps.tunnel.outputs.vnc_url }}'","files_url":"'${{ steps.tunnel.outputs.files_url }}'","user":"runner"}' \
+            || echo "webhook basarisiz"
 
-      - name: Belirtilen sure boyunca aktif tut
+      - name: 8-aktif-tut
         run: |
-          DURATION=$(( ${{ inputs.sure_dakika }} * 60 ))
-          echo "$DURATION saniye aktif kalinacak..."
+          DURATION=$(( $SURE_DK * 60 ))
+          echo "$DURATION sn aktif"
           sleep $DURATION
 
-      - name: Cikti dosyalarini artifact olarak yukle
+      - name: 9-artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -171,7 +156,7 @@ jobs:
           path: shared/
           if-no-files-found: ignore
 
-      - name: Temizlik
+      - name: 10-temizlik
         if: always()
         run: |
           vncserver -kill :1 2>/dev/null || true
@@ -180,5 +165,4 @@ jobs:
           if [ -n "$BACKEND_URL" ]; then
             curl -sS -X POST "$BACKEND_URL/webhook/tunnel" \
               -H "Content-Type: application/json" -H "X-Webhook-Token: $WEBHOOK_SECRET" \
-              -d "{\"correlation_id\":\"${{ inputs.correlation_id }}\",\"status\":\"stopped\"}" || true
-          fi
+              -d '{"correlation_id":"'$CID'","status":"stopped"}' || true
