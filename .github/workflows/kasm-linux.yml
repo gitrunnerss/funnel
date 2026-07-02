@@ -50,19 +50,25 @@ jobs:
       - name: 3-KasmVNC-ayar
         run: |
           mkdir -p ~/.vnc
-          printf '%s\n%s\ny\n' "$VNC_SIFRE" "$VNC_SIFRE" | vncpasswd -u "$USER" || true
-          chmod 600 ~/.vnc/passwd 2>/dev/null || true
+          # KasmVNC vncpasswd: sifreyi ve yazma iznini ayarla
+          printf '%s\n%s\n' "$VNC_SIFRE" "$VNC_SIFRE" | vncpasswd -u "$USER" -w || true
+          # Kontrol
           ls -la ~/.vnc/passwd 2>/dev/null || echo "passwd dosyasi yok"
+          # kasmvnc.yaml
           printf 'network:\n  protocol: http\n  websocket_port: 8444\n  interface: 0.0.0.0\nsecurity:\n  basic_auth: false\nX509:\n  enabled: false\n' > ~/.vnc/kasmvnc.yaml
           cat ~/.vnc/kasmvnc.yaml
+          # xstartup (XFCE)
           printf '#!/bin/bash\nunset SESSION_MANAGER\nunset DBUS_SESSION_BUS_ADDRESS\nexport XDG_SESSION_DESKTOP=xfce\nexport XDG_DATA_DIRS=/usr/share/xfce4:/usr/share/xubuntu:/usr/share:/usr/local/share\nexport DISPLAY=":1"\nexec startxfce4\n' > ~/.vnc/xstartup
           chmod +x ~/.vnc/xstartup
           cat ~/.vnc/xstartup
           echo "ayarlar hazir"
       - name: 4-KasmVNC-baslat
         run: |
-          vncserver :1 -geometry 1280x720 -depth 24 -websocketPort 8444 -disableBasicAuth 2>&1 | tee /tmp/vnc.log &
-          sleep 10
+          # xauth hazirla
+          touch ~/.Xauthority 2>/dev/null || true
+          # vncserver'i baslat — interaktif prompt'u otomatik cevapla
+          printf '1\n' | vncserver :1 -geometry 1280x720 -depth 24 -websocketPort 8444 -disableBasicAuth -select-de xfce4 2>&1 | tee /tmp/vnc.log &
+          sleep 12
           cat /tmp/vnc.log || true
           curl -sS http://localhost:8444/ -o /dev/null -w "HTTP %{http_code}\n" || echo "port bekleniyor"
           ps aux | grep vnc | grep -v grep || echo "vnc proses yok"
@@ -127,3 +133,4 @@ jobs:
           [ -f tunnels.pid ] && xargs -r kill < tunnels.pid 2>/dev/null || true
           if [ -n "$BACKEND_URL" ]; then
             curl -sS -X POST "$BACKEND_URL/webhook/tunnel" -H "Content-Type: application/json" -H "X-Webhook-Token: $WEBHOOK_SECRET" -d '{"correlation_id":"'$CID'","status":"stopped"}' || true
+cd /workspaces/funnel
